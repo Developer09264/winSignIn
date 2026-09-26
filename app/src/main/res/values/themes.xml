@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Compose 负责全部界面；这里只保证 Window 底色跟随日夜，启动不白闪。 -->
+    <style name="Theme.WinSignIn" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">?android:colorBackground</item>
+    </style>
+</resources>

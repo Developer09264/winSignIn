@@ -1,0 +1,20 @@
+*.iml
+.gradle
+.kotlin
+.idea/
+/local.properties
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# build artifacts
+/app/release
+/rust/target
+*.so
+*.apk
+
+# local notes
+sumrise.md

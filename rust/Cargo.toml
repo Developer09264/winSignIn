@@ -1,0 +1,22 @@
+[package]
+name = "winsignin"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "winsignin"
+
+[dependencies]
+uniffi = { version = "0.32", features = ["cli"] }
+# lms 是明文 http，但登录链要访问金智的 https://ids.cqupt.edu.cn，所以需要 rustls
+# （reqwest 的 rustls-tls 用 ring，交叉编译到 Android 比 aws-lc 省事）
+reqwest = { version = "0.12", default-features = false, features = ["json", "cookies", "rustls-tls"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+serde_json = "1"
+url = "2"
+# 登录链要的：AES-128-CBC 加密密码、base64、随机串
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc", "block-padding"] }
+base64 = "0.22"
+rand = "0.8"

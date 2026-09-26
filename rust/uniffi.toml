@@ -1,0 +1,4 @@
+# uniffi 生成 Kotlin 绑定的配置
+[bindings.kotlin]
+package_name = "org.example.winsignin.rust"
+cdylib_name = "winsignin"
