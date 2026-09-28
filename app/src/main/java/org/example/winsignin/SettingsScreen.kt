@@ -29,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -36,7 +37,8 @@ import androidx.compose.ui.unit.dp
 private const val MAX_DELAY_LIMIT = 5
 
 /**
- * 设置：自动数字签到、位置签到方案、探测点、账号错峰间隔、长效登录。
+ * 设置。顶部「使用自定义设置」是总开关：关闭时下面全部锁定、一律走推荐值；
+ * 打开后才能逐项自定义。探测点只在「计算坐标」方案下可用。
  */
 @Composable
 fun SettingsScreen(
@@ -47,28 +49,32 @@ fun SettingsScreen(
     autoNumber: Boolean,
     radarScheme: String,
     probes: List<Pair<Double, Double>>,
+    useCustom: Boolean,
     onChange: (Int, Int) -> Unit,
     onRememberMeChange: (Boolean) -> Unit,
     onCheckLoginOnStartChange: (Boolean) -> Unit,
     onAutoNumberChange: (Boolean) -> Unit,
     onRadarSchemeChange: (String) -> Unit,
     onProbesChange: (List<Pair<Double, Double>>) -> Unit,
+    onUseCustomChange: (Boolean) -> Unit,
     demoMode: Boolean,
     onDemoModeChange: (Boolean) -> Unit,
 ) {
-    // 拖动时先改本地，松手才落盘，别每动一下就写
-    var range by remember {
+    // 拖动时先改本地，松手才落盘，别每动一下就写；换设置值/切自定义时重新同步
+    var range by remember(minSeconds, maxSeconds) {
         mutableStateOf(
             minSeconds.coerceIn(0, MAX_DELAY_LIMIT).toFloat()..
                 maxSeconds.coerceIn(0, MAX_DELAY_LIMIT).toFloat(),
         )
     }
     // 探测点编辑：本地文本框，点「保存」才落盘
-    var probeText by remember {
+    var probeText by remember(probes) {
         mutableStateOf(
             probes.take(DEFAULT_PROBES.size).map { it.first.toString() to it.second.toString() },
         )
     }
+
+    val probesEnabled = useCustom && radarScheme == RADAR_SCHEME_TRILATERATION
 
     val scrollState = rememberScrollState()
     Column(modifier = Modifier.fillMaxSize()) {
@@ -86,6 +92,23 @@ fun SettingsScreen(
             ) {
             Card(
                 colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                ),
+            ) {
+                ListItem(
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    headlineContent = { Text("使用自定义设置") },
+                    supportingContent = {
+                        Text("关闭时全部锁定、使用推荐设置；打开后才能逐项修改")
+                    },
+                    trailingContent = {
+                        Switch(checked = useCustom, onCheckedChange = onUseCustomChange)
+                    },
+                )
+            }
+
+            Card(
+                colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainer,
                 ),
             ) {
@@ -96,7 +119,11 @@ fun SettingsScreen(
                         Text("开启后向统一认证申请「记住我」，约两周内可免密自动换票据")
                     },
                     trailingContent = {
-                        Switch(checked = rememberMe, onCheckedChange = onRememberMeChange)
+                        Switch(
+                            checked = rememberMe,
+                            onCheckedChange = onRememberMeChange,
+                            enabled = useCustom,
+                        )
                     },
                 )
             }
@@ -116,6 +143,7 @@ fun SettingsScreen(
                         Switch(
                             checked = checkLoginOnStart,
                             onCheckedChange = onCheckLoginOnStartChange,
+                            enabled = useCustom,
                         )
                     },
                 )
@@ -133,7 +161,11 @@ fun SettingsScreen(
                         Text("开启后，数字点名弹窗可一键读出签到码签到；关闭则在弹窗里手动输入")
                     },
                     trailingContent = {
-                        Switch(checked = autoNumber, onCheckedChange = onAutoNumberChange)
+                        Switch(
+                            checked = autoNumber,
+                            onCheckedChange = onAutoNumberChange,
+                            enabled = useCustom,
+                        )
                     },
                 )
             }
@@ -153,12 +185,14 @@ fun SettingsScreen(
                         label = "空请求",
                         desc = "直接发空坐标请求，服务器直接判到场",
                         selected = radarScheme == RADAR_SCHEME_EMPTY,
+                        enabled = useCustom,
                         onSelect = { onRadarSchemeChange(RADAR_SCHEME_EMPTY) },
                     )
                     SchemeRow(
                         label = "计算坐标",
                         desc = "先用三个探测点测距，三边定位算出目标坐标再签",
                         selected = radarScheme == RADAR_SCHEME_TRILATERATION,
+                        enabled = useCustom,
                         onSelect = { onRadarSchemeChange(RADAR_SCHEME_TRILATERATION) },
                     )
                 }
@@ -170,12 +204,15 @@ fun SettingsScreen(
                 ),
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .alpha(if (probesEnabled) 1f else 0.45f),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text("探测点", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "填学校周边 3 个点的经纬度（GCJ02）",
+                        if (useCustom) "填学校周边 3 个点的经纬度（GCJ02）"
+                        else "需要「使用自定义设置」+「计算坐标」方案才可修改",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -190,6 +227,7 @@ fun SettingsScreen(
                                 },
                                 label = { Text("纬度") },
                                 singleLine = true,
+                                enabled = probesEnabled,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 modifier = Modifier.weight(1f),
                             )
@@ -201,6 +239,7 @@ fun SettingsScreen(
                                 },
                                 label = { Text("经度") },
                                 singleLine = true,
+                                enabled = probesEnabled,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 modifier = Modifier.weight(1f),
                             )
@@ -212,7 +251,7 @@ fun SettingsScreen(
                         if (a != null && b != null) a to b else null
                     }
                     TextButton(
-                        enabled = parsed.all { it != null },
+                        enabled = probesEnabled && parsed.all { it != null },
                         onClick = { onProbesChange(parsed.filterNotNull()) },
                     ) { Text("保存探测点") }
                 }
@@ -238,6 +277,7 @@ fun SettingsScreen(
                         onValueChangeFinished = {
                             onChange(range.start.toInt(), range.endInclusive.toInt())
                         },
+                        enabled = useCustom,
                         valueRange = 0f..MAX_DELAY_LIMIT.toFloat(),
                         steps = MAX_DELAY_LIMIT - 1,
                     )
@@ -284,6 +324,7 @@ private fun SchemeRow(
     label: String,
     desc: String,
     selected: Boolean,
+    enabled: Boolean,
     onSelect: () -> Unit,
 ) {
     Row(
@@ -292,7 +333,7 @@ private fun SchemeRow(
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RadioButton(selected = selected, onClick = onSelect)
+        RadioButton(selected = selected, onClick = onSelect, enabled = enabled)
         Column(modifier = Modifier.padding(vertical = 8.dp)) {
             Text(label, style = MaterialTheme.typography.bodyLarge)
             Text(

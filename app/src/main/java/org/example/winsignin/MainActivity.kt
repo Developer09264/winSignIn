@@ -133,13 +133,26 @@ fun AppRoot() {
     var checkLoginOnStart by remember {
         mutableStateOf(prefs.getBoolean(KEY_CHECK_LOGIN_ON_START, true))
     }
-    // 启动检查后仍失效的账号，非空则弹窗提示重新登录
-    var expiredAccounts by remember { mutableStateOf<List<Account>?>(null) }
-    val snackbarHostState = remember { SnackbarHostState() }
     // 演示点名只在 debug 包里生效，release 永远关闭
     var demoMode by remember {
         mutableStateOf(BuildConfig.DEBUG && prefs.getBoolean(KEY_DEMO_ROLLCALLS, false))
     }
+    // 总开关：关闭时下面这些自定义值一律不生效，全部用推荐值
+    var useCustom by remember {
+        mutableStateOf(prefs.getBoolean(KEY_USE_CUSTOM_SETTINGS, false))
+    }
+    val effRememberMe = if (useCustom) rememberMe else RECOMMENDED_REMEMBER_ME
+    val effCheckLoginOnStart =
+        if (useCustom) checkLoginOnStart else RECOMMENDED_CHECK_LOGIN_ON_START
+    val effAutoNumber = if (useCustom) autoNumber else RECOMMENDED_AUTO_NUMBER
+    val effRadarScheme = if (useCustom) radarScheme else RECOMMENDED_RADAR_SCHEME
+    val effProbes = if (useCustom) probes else RECOMMENDED_PROBES
+    val effMinDelay = if (useCustom) minDelay else RECOMMENDED_MIN_DELAY
+    val effMaxDelay = if (useCustom) maxDelay else RECOMMENDED_MAX_DELAY
+
+    // 启动检查后仍失效的账号，非空则弹窗提示重新登录
+    var expiredAccounts by remember { mutableStateOf<List<Account>?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     // 首页扫码签到：结果状态放这里，扫码页才能是独立路由。
     var signing by remember { mutableStateOf(false) }
@@ -189,7 +202,7 @@ fun AppRoot() {
         scanResults = emptyList()
         screen = Screen.Home
         scope.launch {
-            scanResults = parallelAccounts(enabled, minDelay, maxDelay) { account ->
+            scanResults = parallelAccounts(enabled, effMinDelay, effMaxDelay) { account ->
                 val r = signQr(account.cookie, account.deviceId, raw)
                 r.success to "${account.displayName}：${r.message}"
             }
@@ -232,7 +245,7 @@ fun AppRoot() {
         }
 
         if (changed) updateAccounts(updated)
-        if (checkLoginOnStart && failed.isNotEmpty()) expiredAccounts = failed
+        if (effCheckLoginOnStart && failed.isNotEmpty()) expiredAccounts = failed
     }
 
     // 系统返回：详情页回各自父页，顶层 Tab 回首页；首页则交给系统退出
@@ -304,23 +317,24 @@ fun AppRoot() {
 
                     Screen.Rollcalls -> RollcallsScreen(
                         accounts = accounts,
-                        minDelaySeconds = minDelay,
-                        maxDelaySeconds = maxDelay,
-                        autoNumber = autoNumber,
-                        radarScheme = radarScheme,
-                        probes = probes,
+                        minDelaySeconds = effMinDelay,
+                        maxDelaySeconds = effMaxDelay,
+                        autoNumber = effAutoNumber,
+                        radarScheme = effRadarScheme,
+                        probes = effProbes,
                         demoMode = demoMode,
                         onBack = { screen = Screen.Home },
                     )
 
                     Screen.Settings -> SettingsScreen(
-                        minSeconds = minDelay,
-                        maxSeconds = maxDelay,
-                        rememberMe = rememberMe,
-                        checkLoginOnStart = checkLoginOnStart,
-                        autoNumber = autoNumber,
-                        radarScheme = radarScheme,
-                        probes = probes,
+                        minSeconds = effMinDelay,
+                        maxSeconds = effMaxDelay,
+                        rememberMe = effRememberMe,
+                        checkLoginOnStart = effCheckLoginOnStart,
+                        autoNumber = effAutoNumber,
+                        radarScheme = effRadarScheme,
+                        probes = effProbes,
+                        useCustom = useCustom,
                         onChange = { mn, mx ->
                             minDelay = mn
                             maxDelay = mx
@@ -346,6 +360,10 @@ fun AppRoot() {
                             probes = it
                             saveProbes(prefs, it)
                         },
+                        onUseCustomChange = {
+                            useCustom = it
+                            prefs.edit().putBoolean(KEY_USE_CUSTOM_SETTINGS, it).apply()
+                        },
                         demoMode = demoMode,
                         onDemoModeChange = {
                             demoMode = it
@@ -355,7 +373,7 @@ fun AppRoot() {
 
                     Screen.Accounts -> AccountsScreen(
                         accounts = accounts,
-                        rememberMe = rememberMe,
+                        rememberMe = effRememberMe,
                         onToggle = { id, on ->
                             updateAccounts(accounts.map { if (it.id == id) it.copy(enabled = on) else it })
                         },
@@ -365,7 +383,7 @@ fun AppRoot() {
                     )
 
                     Screen.AddAccount -> AddAccountScreen(
-                        rememberMe = rememberMe,
+                        rememberMe = effRememberMe,
                         onBack = { screen = Screen.Accounts },
                         onUseWebLogin = {
                             // 网页登录前清掉 WebView 的 SSO 会话，否则会免密登进旧账号。
@@ -424,7 +442,7 @@ fun AppRoot() {
                             return@TextButton
                         }
                         scope.launch {
-                            val res = reloginAccounts(prefs, accounts, canBatch, rememberMe)
+                            val res = reloginAccounts(prefs, accounts, canBatch, effRememberMe)
                             updateAccounts(res.accounts)
                             snackbarHostState.showSnackbar(
                                 if (res.errors.isEmpty()) {

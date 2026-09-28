@@ -16,12 +16,24 @@ const val KEY_RADAR_SCHEME = "radar_scheme"
 const val RADAR_SCHEME_EMPTY = "empty"
 const val RADAR_SCHEME_TRILATERATION = "trilateration"
 
+/** 使用自定义设置：关闭时一律用下面这套推荐值。 */
+const val KEY_USE_CUSTOM_SETTINGS = "use_custom_settings"
+
 /** 三边定位用的默认探测点（学校周边，可改）。 */
 val DEFAULT_PROBES = listOf(
     29.54057 to 106.607061,
     29.521378 to 106.596161,
     29.522124 to 106.617533,
 )
+
+/** 推荐设置：「使用自定义设置」关闭时生效，用户不用管其它设置。 */
+const val RECOMMENDED_REMEMBER_ME = true
+const val RECOMMENDED_CHECK_LOGIN_ON_START = true
+const val RECOMMENDED_AUTO_NUMBER = true
+const val RECOMMENDED_MIN_DELAY = 0
+const val RECOMMENDED_MAX_DELAY = 0
+const val RECOMMENDED_RADAR_SCHEME = RADAR_SCHEME_EMPTY
+val RECOMMENDED_PROBES = DEFAULT_PROBES
 
 private const val PROBE_PREFIX = "probe"
 
