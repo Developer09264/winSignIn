@@ -64,7 +64,7 @@ fun HomeScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        ScreenTopBar(title = "winSignIn")
+        ScreenTopBar(title = "winSignIn", subtitle = "v${BuildConfig.VERSION_NAME}")
 
         Column(
             modifier = Modifier
