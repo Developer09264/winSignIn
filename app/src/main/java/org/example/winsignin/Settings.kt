@@ -8,6 +8,9 @@ const val KEY_AUTO_NUMBER = "auto_number_sign"
 /** 演示点名（调试用）：列表里注入一条数字、一条位置点名，签到返回本地假结果。 */
 const val KEY_DEMO_ROLLCALLS = "demo_rollcalls"
 
+/** 启动时自动检查登录：过期则弹窗提示重新登录。 */
+const val KEY_CHECK_LOGIN_ON_START = "check_login_on_start"
+
 /** 位置签到方案。 */
 const val KEY_RADAR_SCHEME = "radar_scheme"
 const val RADAR_SCHEME_EMPTY = "empty"

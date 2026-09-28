@@ -45,10 +45,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.example.winsignin.rust.login
 
 /**
  * 账号管理：勾选启用、看登录方式、添加（账密/网页）、删除，右上角批量登录。
@@ -72,7 +69,7 @@ fun AccountsScreen(
     var batchRunning by remember { mutableStateOf(false) }
     var errors by remember { mutableStateOf<List<String>?>(null) }
 
-    // 批量登录：所有"启用 + 账密登录 + 有账密"的账号，重新走一遍自动登录
+    // 批量登录：所有"启用 + 账密登录 + 有账密"的账号，重新走一遍自动登录（协程并发）
     fun batchLogin() {
         val targets = accounts.filter {
             it.enabled && it.passwordLogin && it.username.isNotBlank() && it.password.isNotBlank()
@@ -83,31 +80,11 @@ fun AccountsScreen(
         }
         batchRunning = true
         scope.launch {
-            var working = accounts
-            var okCount = 0
-            val errs = mutableListOf<String>()
-            for (acc in targets) {
-                val bfp = bfpFor(prefs, acc.username)
-                val r = withContext(Dispatchers.IO) {
-                    login(acc.username, acc.password, bfp, rememberMe, acc.casCookie)
-                }
-                if (r.ok) {
-                    okCount++
-                    working = working.map {
-                        if (it.id == acc.id) {
-                            it.copy(cookie = r.cookie, casCookie = r.casCookie)
-                        } else {
-                            it
-                        }
-                    }
-                } else {
-                    errs += "${acc.displayName}：${r.message}"
-                }
-            }
-            onUpdateAccounts(working)
+            val res = reloginAccounts(prefs, accounts, targets, rememberMe)
+            onUpdateAccounts(res.accounts)
             batchRunning = false
-            snackbarHostState.showSnackbar("成功登录 $okCount 个账号")
-            if (errs.isNotEmpty()) errors = errs
+            snackbarHostState.showSnackbar("成功登录 ${res.okCount} 个账号")
+            if (res.errors.isNotEmpty()) errors = res.errors
         }
     }
 

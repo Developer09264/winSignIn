@@ -43,11 +43,13 @@ fun SettingsScreen(
     minSeconds: Int,
     maxSeconds: Int,
     rememberMe: Boolean,
+    checkLoginOnStart: Boolean,
     autoNumber: Boolean,
     radarScheme: String,
     probes: List<Pair<Double, Double>>,
     onChange: (Int, Int) -> Unit,
     onRememberMeChange: (Boolean) -> Unit,
+    onCheckLoginOnStartChange: (Boolean) -> Unit,
     onAutoNumberChange: (Boolean) -> Unit,
     onRadarSchemeChange: (String) -> Unit,
     onProbesChange: (List<Pair<Double, Double>>) -> Unit,
@@ -95,6 +97,26 @@ fun SettingsScreen(
                     },
                     trailingContent = {
                         Switch(checked = rememberMe, onCheckedChange = onRememberMeChange)
+                    },
+                )
+            }
+
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                ),
+            ) {
+                ListItem(
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    headlineContent = { Text("启动时自动检查登录") },
+                    supportingContent = {
+                        Text("打开后，启动时检查所有账号的登录是否过期，过期的会弹窗提示重新登录")
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = checkLoginOnStart,
+                            onCheckedChange = onCheckLoginOnStartChange,
+                        )
                     },
                 )
             }

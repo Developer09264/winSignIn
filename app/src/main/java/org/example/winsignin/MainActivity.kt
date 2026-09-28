@@ -14,7 +14,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -24,11 +26,16 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.ManageAccounts
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -122,6 +130,12 @@ fun AppRoot() {
         mutableStateOf(prefs.getString(KEY_RADAR_SCHEME, RADAR_SCHEME_EMPTY) ?: RADAR_SCHEME_EMPTY)
     }
     var probes by remember { mutableStateOf(loadProbes(prefs)) }
+    var checkLoginOnStart by remember {
+        mutableStateOf(prefs.getBoolean(KEY_CHECK_LOGIN_ON_START, true))
+    }
+    // 启动检查后仍失效的账号，非空则弹窗提示重新登录
+    var expiredAccounts by remember { mutableStateOf<List<Account>?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
     // 演示点名只在 debug 包里生效，release 永远关闭
     var demoMode by remember {
         mutableStateOf(BuildConfig.DEBUG && prefs.getBoolean(KEY_DEMO_ROLLCALLS, false))
@@ -183,13 +197,16 @@ fun AppRoot() {
         }
     }
 
-    // 启动时逐个账号探活：补名字；会话失效且有 CAS cookie 就免密刷新
+    // 启动时并行探活：补名字；失效的先试免密刷新；仍失效且开关开着就弹窗提示
     LaunchedEffect(Unit) {
+        val probe = accounts.filter { it.cookie.isNotBlank() }
+        if (probe.isEmpty()) return@LaunchedEffect
+
         var updated = accounts
         var changed = false
-        for (acc in accounts) {
-            if (acc.cookie.isBlank()) continue
-            val info = withContext(Dispatchers.IO) { getAccount(acc.cookie) }
+        val failed = mutableListOf<Account>()
+
+        for ((acc, info) in parallelAccounts(probe, 0, 0) { it to getAccount(it.cookie) }) {
             if (info.ok) {
                 if (acc.name != info.name || acc.studentId != info.id) {
                     updated = updated.map {
@@ -197,23 +214,25 @@ fun AppRoot() {
                     }
                     changed = true
                 }
-                continue
-            }
-            if (acc.casCookie.isNotBlank()) {
-                val refreshed = withContext(Dispatchers.IO) { refreshSession(acc.casCookie) }
-                if (refreshed.ok) {
-                    updated = updated.map {
-                        if (it.id == acc.id) {
-                            it.copy(cookie = refreshed.cookie, casCookie = refreshed.casCookie)
-                        } else {
-                            it
-                        }
-                    }
-                    changed = true
-                }
+            } else {
+                failed += acc
             }
         }
+
+        // 失效但存了 CAS cookie 的，先试免密刷新
+        val refreshable = failed.filter { it.casCookie.isNotBlank() }
+        for ((acc, r) in parallelAccounts(refreshable, 0, 0) { it to refreshSession(it.casCookie) }) {
+            if (r.ok) {
+                failed.removeAll { it.id == acc.id }
+                updated = updated.map {
+                    if (it.id == acc.id) it.copy(cookie = r.cookie, casCookie = r.casCookie) else it
+                }
+                changed = true
+            }
+        }
+
         if (changed) updateAccounts(updated)
+        if (checkLoginOnStart && failed.isNotEmpty()) expiredAccounts = failed
     }
 
     // 系统返回：详情页回各自父页，顶层 Tab 回首页；首页则交给系统退出
@@ -226,6 +245,7 @@ fun AppRoot() {
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             AnimatedVisibility(
                 visible = screen.topLevel,
@@ -297,6 +317,7 @@ fun AppRoot() {
                         minSeconds = minDelay,
                         maxSeconds = maxDelay,
                         rememberMe = rememberMe,
+                        checkLoginOnStart = checkLoginOnStart,
                         autoNumber = autoNumber,
                         radarScheme = radarScheme,
                         probes = probes,
@@ -308,6 +329,10 @@ fun AppRoot() {
                         onRememberMeChange = {
                             rememberMe = it
                             prefs.edit().putBoolean(KEY_REMEMBER_ME, it).apply()
+                        },
+                        onCheckLoginOnStartChange = {
+                            checkLoginOnStart = it
+                            prefs.edit().putBoolean(KEY_CHECK_LOGIN_ON_START, it).apply()
                         },
                         onAutoNumberChange = {
                             autoNumber = it
@@ -366,5 +391,55 @@ fun AppRoot() {
                 }
             }
         }
+    }
+
+    // 启动检查发现仍失效的账号：列出来，让用户决定批量重登或取消
+    expiredAccounts?.let { list ->
+        val canBatch = list.filter { it.username.isNotBlank() && it.password.isNotBlank() }
+        val manualCount = list.size - canBatch.size
+        AlertDialog(
+            onDismissRequest = { expiredAccounts = null },
+            title = { Text("登录已过期") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("以下账号的登录已过期：")
+                    list.forEach { Text("· ${it.displayName}") }
+                    if (manualCount > 0) {
+                        Text(
+                            "其中 $manualCount 个是网页登录，需手动重新登录。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        expiredAccounts = null
+                        if (canBatch.isEmpty()) {
+                            scope.launch {
+                                snackbarHostState.showSnackbar("没有可自动登录的账号，请手动重新登录")
+                            }
+                            return@TextButton
+                        }
+                        scope.launch {
+                            val res = reloginAccounts(prefs, accounts, canBatch, rememberMe)
+                            updateAccounts(res.accounts)
+                            snackbarHostState.showSnackbar(
+                                if (res.errors.isEmpty()) {
+                                    "已重新登录 ${res.okCount} 个账号"
+                                } else {
+                                    "成功 ${res.okCount} 个，失败 ${res.errors.size} 个"
+                                },
+                            )
+                        }
+                    },
+                ) { Text("批量登录") }
+            },
+            dismissButton = {
+                TextButton(onClick = { expiredAccounts = null }) { Text("取消") }
+            },
+        )
     }
 }
